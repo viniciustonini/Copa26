@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bolão Copa 2026</title>
+
+<style>
+body { font-family: Arial; max-width: 900px; margin: auto; padding: 20px; }
+h1, h2 { text-align:center; }
+input, select { padding:6px; margin:4px; }
+button { padding:6px 10px; cursor:pointer; }
+table { width:100%; border-collapse: collapse; margin-top:10px; }
+th, td { border:1px solid #ccc; padding:6px; text-align:center; }
+.gold { color:gold; font-weight:bold; }
+.silver { color:silver; font-weight:bold; }
+.bronze { color:#cd7f32; font-weight:bold; }
+.pago { color:green; }
+.pendente { color:red; }
+.section { border:1px solid #ddd; padding:15px; margin-top:20px; border-radius:8px;}
+</style>
+</head>
+<body>
+
+<h1>🏆 Bolão Copa 2026</h1>
+
+<div class="section">
+<h2>Adicionar Participante</h2>
+<input id="nomeParticipante" placeholder="Nome">
+<label><input type="checkbox" id="statusPago"> Pago (R$50)</label>
+<button onclick="addParticipante()">Adicionar</button>
+</div>
+
+<div class="section">
+<h2>Criar Jogo</h2>
+<input id="timeA" placeholder="Time A">
+<input id="timeB" placeholder="Time B">
+<button onclick="addJogo()">Criar</button>
+</div>
+
+<div class="section">
+<h2>Inserir Resultado (Admin)</h2>
+<select id="selectJogoResultado"></select>
+<input type="number" id="golsA" placeholder="Gols A">
+<input type="number" id="golsB" placeholder="Gols B">
+<button onclick="finalizarJogo()">Finalizar</button>
+</div>
+
+<div class="section">
+<h2>Palpites</h2>
+<select id="selectParticipante"></select>
+<div id="listaJogos"></div>
+</div>
+
+<div class="section">
+<h2>Ranking</h2>
+<div id="ranking"></div>
+</div>
+
+<script>
+let participantes = JSON.parse(localStorage.getItem("participantes")) || [];
+let jogos = JSON.parse(localStorage.getItem("jogos")) || [];
+let palpites = JSON.parse(localStorage.getItem("palpites")) || [];
+
+function salvar() {
+  localStorage.setItem("participantes", JSON.stringify(participantes));
+  localStorage.setItem("jogos", JSON.stringify(jogos));
+  localStorage.setItem("palpites", JSON.stringify(palpites));
+}
+
+function addParticipante() {
+  const nome = nomeParticipante.value.trim();
+  if(!nome) return alert("Digite um nome");
+  participantes.push({ nome, pontos:0, pago: statusPago.checked });
+  salvar();
+  atualizarSelects();
+  atualizarRanking();
+  nomeParticipante.value="";
+}
+
+function addJogo() {
+  if(!timeA.value || !timeB.value) return;
+  jogos.push({ id:Date.now(), timeA:timeA.value, timeB:timeB.value, golsA:null, golsB:null });
+  salvar();
+  atualizarSelects();
+  renderJogos();
+  timeA.value=""; timeB.value="";
+}
+
+function atualizarSelects() {
+  selectParticipante.innerHTML = participantes.map((p,i)=>`<option value="${i}">${p.nome}</option>`).join("");
+  selectJogoResultado.innerHTML = jogos.map((j,i)=>`<option value="${i}">${j.timeA} x ${j.timeB}</option>`).join("");
+}
+
+function renderJogos() {
+  listaJogos.innerHTML="";
+  jogos.forEach((j,index)=>{
+    const div = document.createElement("div");
+    div.innerHTML = `
+      <b>${j.timeA} x ${j.timeB}</b>
+      <input type="number" id="pA${index}" style="width:50px">
+      <input type="number" id="pB${index}" style="width:50px">
+      <button onclick="salvarPalpite(${index})">Salvar</button>
+      ${j.golsA !== null ? `<span> Resultado: ${j.golsA} x ${j.golsB}</span>`:""}
+    `;
+    listaJogos.appendChild(div);
+  });
+}
+
+function salvarPalpite(index) {
+  const participanteIndex = selectParticipante.value;
+  const pA = Number(document.getElementById("pA"+index).value);
+  const pB = Number(document.getElementById("pB"+index).value);
+
+  palpites = palpites.filter(p=>!(p.participante==participanteIndex && p.jogo==index));
+  palpites.push({ participante:participanteIndex, jogo:index, pA, pB });
+  salvar();
+  alert("Palpite salvo!");
+}
+
+function calcularPontos(gA,gB,pA,pB){
+  if(gA===pA && gB===pB) return 5;
+  if(Math.sign(gA-gB)===Math.sign(pA-pB)) return 3;
+  return 0;
+}
+
+function finalizarJogo(){
+  const index = selectJogoResultado.value;
+  jogos[index].golsA = Number(golsA.value);
+  jogos[index].golsB = Number(golsB.value);
+
+  participantes.forEach(p=>p.pontos=0);
+
+  palpites.forEach(p=>{
+    const jogo = jogos[p.jogo];
+    if(jogo.golsA!==null){
+      participantes[p.participante].pontos += calcularPontos(jogo.golsA,jogo.golsB,p.pA,p.pB);
+    }
+  });
+
+  salvar();
+  atualizarRanking();
+  renderJogos();
+}
+
+function atualizarRanking(){
+  let rankingOrdenado = [...participantes].sort((a,b)=>b.pontos-a.pontos);
+
+  ranking.innerHTML="";
+  rankingOrdenado.forEach((p,i)=>{
+    let medalha="";
+    let classe="";
+    if(i===0){ medalha="🥇"; classe="gold"; }
+    if(i===1){ medalha="🥈"; classe="silver"; }
+    if(i===2){ medalha="🥉"; classe="bronze"; }
+
+    ranking.innerHTML+=`
+      <div class="${classe}">
+        ${medalha} ${p.nome} - ${p.pontos} pts 
+        <span class="${p.pago?'pago':'pendente'}">
+        (${p.pago?'Pago':'Pendente'})
+        </span>
+      </div>
+    `;
+  });
+}
+
+atualizarSelects();
+renderJogos();
+atualizarRanking();
+</script>
+
+</body>
+</html>
